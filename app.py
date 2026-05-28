@@ -1,4 +1,5 @@
 import csv
+import re
 import io
 import os
 import subprocess
@@ -17,14 +18,19 @@ app.secret_key = os.urandom(24)
 jobs: dict = {}
 
 
-# ── Column fuzzy-finder ─────────────────────────────────────────────────────
+# ── Column helpers ───────────────────────────────────────────────────────────
+
+def _normalize_key(key: str) -> str:
+    """'Full Name' → 'full_name', 'Phone 1' → 'phone_1'"""
+    return re.sub(r'[^a-z0-9]+', '_', key.strip().lower()).strip('_')
+
 
 def _find_col(row: dict, *keywords: str) -> str:
-    """Return the first value whose lowercased key contains any keyword, in priority order."""
+    """Return the first non-empty value whose lowercased key contains any keyword."""
     lower = {k.lower(): v for k, v in row.items()}
     for kw in keywords:
         for k, v in lower.items():
-            if kw in k:
+            if kw in k and v.strip():
                 return v
     return ""
 
@@ -142,16 +148,29 @@ def preview():
 
     previews = []
     for row in rows:
-        clean = {k.strip(): v.strip() for k, v in row.items() if k}
-        phone = _find_col(clean, "phone") or ""
-        name  = _find_col(clean, "first", "name") or "Unknown"
+        # Build clean dict with both original keys and normalized keys (e.g. "Full Name" + "full_name")
+        clean = {}
+        display = {}
+        for k, v in row.items():
+            if not k:
+                continue
+            ok = k.strip()
+            ov = (v or "").strip()
+            clean[ok] = ov
+            display[ok] = ov
+            norm = _normalize_key(ok)
+            if norm not in clean:
+                clean[norm] = ov
+
+        phone   = _find_col(clean, "phone") or ""
+        name    = _find_col(clean, "first", "name") or "Unknown"
         tpl_idx = random.randrange(len(templates))
         tpl     = templates[tpl_idx]
         try:
             message = tpl.format(**clean)
-            previews.append({"name": name, "phone": phone, "message": message, "error": None, "template_idx": tpl_idx})
+            previews.append({"name": name, "phone": phone, "message": message, "error": None, "template_idx": tpl_idx, "data": display})
         except KeyError as e:
-            previews.append({"name": name, "phone": phone, "message": "", "error": f"Missing variable: {e}", "template_idx": tpl_idx})
+            previews.append({"name": name, "phone": phone, "message": "", "error": f"Missing variable: {e}", "template_idx": tpl_idx, "data": display})
 
     return jsonify({"previews": previews})
 

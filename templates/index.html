@@ -426,17 +426,13 @@
   <div class="card">
     <div class="card-title"><span class="step-num">2</span> Message Templates</div>
 
-    <div class="var-insert-row">
+    <div class="var-insert-row" id="var-insert-row">
       <label>Insert variable →</label>
       <button class="var-btn" onclick="insertVar('name')">{name}</button>
       <button class="var-btn" onclick="insertVar('phone')">{phone}</button>
-      <button class="var-btn" onclick="insertVar('address')">{address}</button>
+      <button class="var-btn" onclick="insertVar('first_name')">{first_name}</button>
       <button class="var-btn" onclick="insertVar('city')">{city}</button>
       <button class="var-btn" onclick="insertVar('zip')">{zip}</button>
-      <button class="var-btn" onclick="insertVar('email')">{email}</button>
-      <button class="var-btn" onclick="insertVar('company')">{company}</button>
-      <button class="var-btn" onclick="insertVar('first_name')">{first_name}</button>
-      <button class="var-btn" onclick="insertVar('last_name')">{last_name}</button>
     </div>
 
     <div id="templates-list"></div>
@@ -512,6 +508,19 @@
     if (fileInput.files[0]) uploadCSV(fileInput.files[0]);
   });
 
+  function normalizeKey(key) {
+    return key.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+
+  function updateVarButtons() {
+    const container = document.getElementById('var-insert-row');
+    const btns = csvHeaders.map(h => {
+      const norm = normalizeKey(h);
+      return `<button class="var-btn" onclick="insertVar('${norm}')" title="Column: ${h}">{${norm}}</button>`;
+    }).join('');
+    container.innerHTML = '<label>Insert variable →</label>' + btns;
+  }
+
   async function uploadCSV(file) {
     const fd = new FormData();
     fd.append('file', file);
@@ -525,6 +534,7 @@
     document.getElementById('csv-info-text').textContent =
       `✓ Loaded ${data.count} contacts — columns: ${data.headers.join(', ')}`;
     document.getElementById('btn-preview').disabled = false;
+    updateVarButtons();
     detectVars();
   }
 
@@ -640,8 +650,7 @@
         <thead>
           <tr>
             <th>#</th>
-            <th>Name</th>
-            <th>Phone</th>
+            ${csvHeaders.map(h => `<th>${esc(h)}</th>`).join('')}
             <th>Message</th>
             ${showTpl ? '<th>Tpl</th>' : ''}
             <th>Status</th>
@@ -652,8 +661,7 @@
           ${rows.map((r, i) => `
             <tr id="row-${i}">
               <td style="color:var(--muted)">${i + 1}</td>
-              <td>${esc(r.name)}</td>
-              <td style="font-family:'SF Mono',monospace;font-size:12px">${esc(r.phone)}</td>
+              ${csvHeaders.map(h => `<td style="font-size:12px;color:var(--muted);white-space:nowrap">${esc((r.data || {})[h] || '')}</td>`).join('')}
               <td>${r.error
                 ? `<span style="color:var(--red);font-size:12px">⚠ ${esc(r.error)}</span>`
                 : esc(r.message)
