@@ -33,3 +33,11 @@ env/
 # Environment variables
 .env
 .env.local
+
+# Distribution zip
+*.zip
+
+# Contact files (may contain personal data)
+*.csv
+*.xlsx
+*.xls

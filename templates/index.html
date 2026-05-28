@@ -34,6 +34,9 @@
       align-items: center;
       gap: 12px;
       margin-bottom: 32px;
+      max-width: 1100px;
+      margin-left: auto;
+      margin-right: auto;
     }
     header .logo {
       width: 40px; height: 40px;
@@ -50,6 +53,7 @@
       grid-template-columns: 1fr 1fr;
       gap: 20px;
       max-width: 1100px;
+      margin: 0 auto;
     }
 
     .card {
@@ -141,9 +145,9 @@
     }
 
     /* Template editor */
-    #template {
+    .template-ta {
       width: 100%;
-      min-height: 140px;
+      min-height: 120px;
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -155,7 +159,16 @@
       font-family: inherit;
       transition: border-color .2s;
     }
-    #template:focus { outline: none; border-color: var(--accent); }
+    .template-ta:focus { outline: none; border-color: var(--accent); }
+
+    /* Multi-template list */
+    #templates-list { max-height: 500px; overflow-y: auto; padding-right: 2px; }
+    .template-item  { margin-bottom: 12px; }
+    .template-item:last-child { margin-bottom: 0; }
+    .tpl-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .tpl-label  { font-size: 12px; color: var(--muted); font-weight: 600; }
+    .badge-tpl  { background: rgba(99,102,241,.12); color: #a5b4fc; border: 1px solid rgba(99,102,241,.25); }
+    .btn-add-template { width: 100%; margin-top: 10px; }
 
     .variables-detected {
       margin-top: 10px;
@@ -409,9 +422,9 @@
     </div>
   </div>
 
-  <!-- Step 2: Template -->
+  <!-- Step 2: Templates -->
   <div class="card">
-    <div class="card-title"><span class="step-num">2</span> Message Template</div>
+    <div class="card-title"><span class="step-num">2</span> Message Templates</div>
 
     <div class="var-insert-row">
       <label>Insert variable →</label>
@@ -426,12 +439,15 @@
       <button class="var-btn" onclick="insertVar('last_name')">{last_name}</button>
     </div>
 
-    <textarea id="template" placeholder="Hi {name}, just a reminder about your appointment tomorrow. Reply STOP to opt out."></textarea>
+    <div id="templates-list"></div>
+
+    <button class="btn-ghost btn-add-template" onclick="addTemplate()">+ Add Template</button>
 
     <div class="variables-detected" id="vars-detected"></div>
 
     <div class="hint" style="margin-top:10px">
-      Click a variable above to insert it, or type <code>{column_name}</code> for any column in your file.
+      Add multiple templates — each contact is randomly assigned one to reduce spam detection.
+      Click a variable above to insert it into the last-active template.
     </div>
   </div>
 
@@ -477,9 +493,11 @@
   let csvHeaders = [];
   let previews   = [];
   let sending    = false;
+  let numTemplates    = 1;
+  let lastFocusedTaId = 'tpl-0';
 
   // ── Drag & Drop ────────────────────────────────────────────────────────────
-  const dropZone = document.getElementById('drop-zone');
+  const dropZone  = document.getElementById('drop-zone');
   const fileInput = document.getElementById('file-input');
 
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
@@ -499,17 +517,13 @@
     fd.append('file', file);
     const res  = await fetch('/parse-csv', { method: 'POST', body: fd });
     const data = await res.json();
-
     if (data.error) { alert(data.error); return; }
-
     csvRows    = data.rows;
     csvHeaders = data.headers;
-
     const info = document.getElementById('csv-info');
     info.style.display = 'flex';
     document.getElementById('csv-info-text').textContent =
       `✓ Loaded ${data.count} contacts — columns: ${data.headers.join(', ')}`;
-
     document.getElementById('btn-preview').disabled = false;
     detectVars();
   }
@@ -529,9 +543,51 @@
     document.getElementById('progress-wrap').style.display = 'none';
   }
 
+  // ── Multi-template management ──────────────────────────────────────────────
+  function _renderTemplatesWithValues(vals) {
+    const container = document.getElementById('templates-list');
+    const count     = vals.length;
+    container.innerHTML = vals.map((_, i) => `
+      <div class="template-item" id="tpl-item-${i}">
+        <div class="tpl-header">
+          <span class="tpl-label">Template ${i + 1}${count === 1 ? ' — add more for random rotation' : ''}</span>
+          ${count > 1 ? `<button class="btn-delete-row" onclick="removeTemplate(${i})" title="Remove">✕</button>` : ''}
+        </div>
+        <textarea class="template-ta" id="tpl-${i}"
+          placeholder="Hi {name}, message variant ${i + 1}…"
+          oninput="detectVars()"
+          onfocus="lastFocusedTaId='tpl-${i}'"
+        ></textarea>
+      </div>
+    `).join('');
+    vals.forEach((v, i) => { document.getElementById(`tpl-${i}`).value = v; });
+    numTemplates = count;
+    if (!document.getElementById(lastFocusedTaId)) lastFocusedTaId = 'tpl-0';
+    detectVars();
+  }
+
+  function getTemplateValues() {
+    return Array.from(document.querySelectorAll('.template-ta')).map(ta => ta.value);
+  }
+
+  function addTemplate() {
+    const vals = getTemplateValues();
+    vals.push('');
+    _renderTemplatesWithValues(vals);
+    const idx  = vals.length - 1;
+    const newTa = document.getElementById(`tpl-${idx}`);
+    if (newTa) { newTa.focus(); lastFocusedTaId = `tpl-${idx}`; }
+  }
+
+  function removeTemplate(i) {
+    const vals = getTemplateValues();
+    vals.splice(i, 1);
+    _renderTemplatesWithValues(vals);
+  }
+
   // ── Variable insertion ─────────────────────────────────────────────────────
   function insertVar(name) {
-    const ta    = document.getElementById('template');
+    const ta    = document.getElementById(lastFocusedTaId) || document.getElementById('tpl-0');
     const start = ta.selectionStart;
     const end   = ta.selectionEnd;
     const token = `{${name}}`;
@@ -542,30 +598,28 @@
   }
 
   // ── Variable detection ─────────────────────────────────────────────────────
-  const templateEl = document.getElementById('template');
-  templateEl.addEventListener('input', detectVars);
-
   function detectVars() {
-    const tpl  = templateEl.value;
-    const vars = [...new Set([...tpl.matchAll(/\{(\w+)\}/g)].map(m => m[1]))];
-    const el   = document.getElementById('vars-detected');
+    const allText = getTemplateValues().join(' ');
+    const vars    = [...new Set([...allText.matchAll(/\{(\w+)\}/g)].map(m => m[1]))];
+    const el      = document.getElementById('vars-detected');
     if (vars.length === 0) { el.textContent = ''; return; }
-    el.innerHTML = 'Variables detected: ' + vars.map(v => `<span class="var-chip">{${v}}</span>`).join(' ');
+    el.innerHTML  = 'Variables detected: ' + vars.map(v => `<span class="var-chip">{${v}}</span>`).join(' ');
   }
 
   // ── Preview ────────────────────────────────────────────────────────────────
   async function generatePreview() {
     if (!csvRows.length) { alert('Upload a CSV first.'); return; }
-    const template = templateEl.value.trim();
-    if (!template)  { alert('Write a message template first.'); return; }
+    const templates = getTemplateValues().filter(t => t.trim());
+    if (!templates.length) { alert('Write at least one message template first.'); return; }
 
     const res  = await fetch('/preview', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ template, rows: csvRows })
+      body:    JSON.stringify({ templates, rows: csvRows })
     });
     const data = await res.json();
-    previews = data.previews;
+    previews     = data.previews;
+    numTemplates = templates.length;
     renderTable(previews);
     document.getElementById('btn-send').disabled = previews.filter(p => !p.error).length === 0;
     document.getElementById('send-summary').style.display = 'none';
@@ -579,7 +633,8 @@
       return;
     }
 
-    const valid = rows.filter(r => !r.error).length;
+    const showTpl = numTemplates > 1;
+    const valid   = rows.filter(r => !r.error).length;
     const html = `
       <table>
         <thead>
@@ -588,6 +643,7 @@
             <th>Name</th>
             <th>Phone</th>
             <th>Message</th>
+            ${showTpl ? '<th>Tpl</th>' : ''}
             <th>Status</th>
             <th></th>
           </tr>
@@ -602,6 +658,7 @@
                 ? `<span style="color:var(--red);font-size:12px">⚠ ${esc(r.error)}</span>`
                 : esc(r.message)
               }</td>
+              ${showTpl ? `<td><span class="badge badge-tpl">T${(r.template_idx ?? 0) + 1}</span></td>` : ''}
               <td><span class="badge badge-pending" id="badge-${i}">Pending</span></td>
               <td><button class="btn-delete-row" title="Remove contact" onclick="deleteRow(${i})">✕</button></td>
             </tr>
@@ -640,12 +697,11 @@
     document.getElementById('btn-send').disabled    = true;
     document.getElementById('btn-preview').disabled = true;
 
-    const delay = parseFloat(document.getElementById('delay').value) || 2;
+    const delay    = parseFloat(document.getElementById('delay').value) || 2;
     const messages = validPreviews.map(p => ({
       name: p.name, phone: p.phone, message: p.message
     }));
 
-    // Start job
     const startRes = await fetch('/send', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -653,11 +709,9 @@
     });
     const { job_id } = await startRes.json();
 
-    // Show progress
     const progressWrap = document.getElementById('progress-wrap');
     progressWrap.style.display = 'block';
 
-    // Poll for progress
     let lastIndex = -1;
     const interval = setInterval(async () => {
       const res  = await fetch(`/progress/${job_id}`);
@@ -689,19 +743,15 @@
   }
 
   function updateRowBadge(result) {
-    // Find the visual row — need to map back to original index including error rows
-    // We iterate over previews to find which visual row corresponds
     let visualIdx = 0;
     for (let i = 0; i < previews.length; i++) {
       if (!previews[i].error) {
         if (visualIdx === result.index) {
           const badge = document.getElementById(`badge-${i}`);
           if (badge) {
-            badge.className = 'badge ' + (result.success ? 'badge-ok' : 'badge-error');
+            badge.className   = 'badge ' + (result.success ? 'badge-ok' : 'badge-error');
             badge.textContent = result.success ? '✓ Sent' : '✗ Failed';
-            if (!result.success && result.error) {
-              badge.title = result.error;
-            }
+            if (!result.success && result.error) badge.title = result.error;
           }
           break;
         }
@@ -717,9 +767,11 @@
     document.getElementById('stat-fail').textContent  = fail;
     document.getElementById('stat-total').textContent = results.length;
     document.getElementById('send-summary').style.display = 'flex';
-    document.getElementById('progress-label').textContent =
-      `Done — ${ok} sent, ${fail} failed`;
+    document.getElementById('progress-label').textContent = `Done — ${ok} sent, ${fail} failed`;
   }
+
+  // Initialize with one empty template
+  _renderTemplatesWithValues(['']);
 </script>
 </body>
 </html>

@@ -4,6 +4,7 @@ import os
 import subprocess
 import threading
 import time
+import random
 import uuid
 
 import openpyxl
@@ -114,10 +115,18 @@ def parse_csv():
 
 @app.route("/preview", methods=["POST"])
 def preview():
-    """Generate preview messages from template + CSV data."""
-    data     = request.get_json()
-    template = data.get("template", "")
-    rows     = data.get("rows", [])
+    """Generate preview messages from template(s) + CSV data."""
+    data      = request.get_json()
+    templates = data.get("templates", [])
+    rows      = data.get("rows", [])
+
+    # Support legacy single-template callers
+    if not templates:
+        t = data.get("template", "")
+        if t:
+            templates = [t]
+    if not templates:
+        return jsonify({"error": "No template provided"}), 400
 
     previews = []
     for row in rows:
@@ -135,11 +144,13 @@ def preview():
             or clean.get("first_name")
             or "Unknown"
         )
+        tpl_idx = random.randrange(len(templates))
+        tpl     = templates[tpl_idx]
         try:
-            message = template.format(**clean)
-            previews.append({"name": name, "phone": phone, "message": message, "error": None})
+            message = tpl.format(**clean)
+            previews.append({"name": name, "phone": phone, "message": message, "error": None, "template_idx": tpl_idx})
         except KeyError as e:
-            previews.append({"name": name, "phone": phone, "message": "", "error": f"Missing variable: {e}"})
+            previews.append({"name": name, "phone": phone, "message": "", "error": f"Missing variable: {e}", "template_idx": tpl_idx})
 
     return jsonify({"previews": previews})
 
