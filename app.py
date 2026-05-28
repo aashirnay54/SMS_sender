@@ -17,6 +17,18 @@ app.secret_key = os.urandom(24)
 jobs: dict = {}
 
 
+# ── Column fuzzy-finder ─────────────────────────────────────────────────────
+
+def _find_col(row: dict, *keywords: str) -> str:
+    """Return the first value whose lowercased key contains any keyword, in priority order."""
+    lower = {k.lower(): v for k, v in row.items()}
+    for kw in keywords:
+        for k, v in lower.items():
+            if kw in k:
+                return v
+    return ""
+
+
 # ── AppleScript sender ──────────────────────────────────────────────────────
 
 def _escape(s: str) -> str:
@@ -131,19 +143,8 @@ def preview():
     previews = []
     for row in rows:
         clean = {k.strip(): v.strip() for k, v in row.items() if k}
-        phone = (
-            clean.get("phone")
-            or clean.get("Phone")
-            or clean.get("phone_number")
-            or clean.get("Phone Number")
-            or ""
-        )
-        name = (
-            clean.get("name")
-            or clean.get("Name")
-            or clean.get("first_name")
-            or "Unknown"
-        )
+        phone = _find_col(clean, "phone") or ""
+        name  = _find_col(clean, "first", "name") or "Unknown"
         tpl_idx = random.randrange(len(templates))
         tpl     = templates[tpl_idx]
         try:
